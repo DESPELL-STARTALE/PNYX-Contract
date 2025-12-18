@@ -5,12 +5,25 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract TournamentFinalizer is Ownable {
     // def. STRUCT
+    /**
+     * @notice 아이템 통계 구조체
+     * @dev 우승자와 준우승자 횟수를 저장
+     * @param firstCnt 우승자 횟수
+     * @param secondCnt 준우승자 횟수
+     */
     struct ItemStat {
         uint256 firstCnt;
         uint256 secondCnt;
     }
 
     // def. EVENT
+    /**
+     * @notice 토너먼트 종료 이벤트
+     * @dev 토너먼트 종료 시 발생
+     * @param user 주소
+     * @param themeId 테마 ID
+     * @param tournamentData 토너먼트 데이터
+     */
     event TournamentFinalized(
         address indexed user,
         uint16 themeId,
@@ -18,11 +31,29 @@ contract TournamentFinalizer is Ownable {
     );
 
     // def. ERROR
+    /**
+     * @notice 토너먼트 데이터 유효성 검사 오류
+     * @dev 토너먼트 데이터 길이가 128이 아닐 때 발생
+     * @param bytesLength 토너먼트 데이터 길이
+     */
     error InvalidTournament(uint256 bytesLength);
+    /**
+     * @notice 아이템 유효성 검사 오류
+     * @dev 아이템 값이 0이상이 아닐 때 발생
+     * @param value 아이템 값
+     */
     error InvalidItem(uint16 value);
 
     // def. VARIABLE
+    /**
+     * @notice 테마 횟수 매핑
+     * @dev 테마 ID와 횟수를 저장
+     */
     mapping(uint16 => uint256) public themeCnt;
+    /**
+     * @notice 아이템 통계 매핑
+     * @dev 테마 ID와 아이템 ID와 횟수를 저장
+     */
     mapping(uint16 => mapping(uint16 => ItemStat)) public stats;
 
     // def. CONSTANT
@@ -31,6 +62,12 @@ contract TournamentFinalizer is Ownable {
 
     constructor() Ownable(msg.sender) {}
 
+    /**
+     * @notice 토너먼트 종료 함수
+     * @dev 토너먼트 종료 시 발생
+     * @param _themeId 테마 ID
+     * @param _tournamentData 토너먼트 데이터
+     */
     function finalizeTournament(
         uint16 _themeId,
         bytes calldata _tournamentData
@@ -52,9 +89,12 @@ contract TournamentFinalizer is Ownable {
         emit TournamentFinalized(msg.sender, _themeId, _tournamentData);
     }
 
-    function _requireAllUniqueUint16BE(
-        bytes calldata data
-    ) internal pure {
+    /**
+     * @notice 모든 아이템은 0이상이며 다른 값을 가지고 있어야 함
+     * @dev 모든 아이템은 0이상이며 다른 값을 가지고 있어야 함
+     * @param data 토너먼트 데이터
+     */
+    function _requireAllUniqueUint16BE(bytes calldata data) internal pure {
         uint256 n = data.length / 2; // 참가자 수
         uint256[256] memory seen; // 0 ~ 2^16-1 까지만 커버할 수 있는 배열
 
@@ -76,6 +116,13 @@ contract TournamentFinalizer is Ownable {
         }
     }
 
+    /**
+     * @notice Big-endian: [MSB][LSB]
+     * @dev Big-endian: [MSB][LSB]
+     * @param data 토너먼트 데이터
+     * @param offset 오프셋
+     * @return v 아이템 ID
+     */
     function _readUint16BE(
         bytes calldata data,
         uint256 offset
