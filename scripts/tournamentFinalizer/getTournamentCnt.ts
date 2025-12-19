@@ -3,9 +3,10 @@ import fs from "fs";
 import path from "path";
 
 // ============================================================
-// ✏️ 조회할 themeId (필요시 수정하거나 CLI 인자로 교체)
+// ✏️ 조회할 tournamentId (필요시 수정하거나 CLI 인자로 교체)
 // ============================================================
-const THEME_ID: number = 1;
+// 컨트랙트에서 tournamentCnt 매핑은 uint16 _tournamentId를 키로 사용합니다
+const TOURNAMENT_ID: number = 1;
 
 // deployment-info.json 에서 TournamentFinalizer 주소 읽기
 function loadTournamentFinalizerAddressFromDeploymentInfo(): string {
@@ -48,7 +49,7 @@ function loadTournamentFinalizerAddressFromDeploymentInfo(): string {
 // ============================================================
 
 async function main() {
-    console.log("🚀 TournamentFinalizer.themeCnt 조회 스크립트를 시작합니다.");
+    console.log("🚀 TournamentFinalizer.tournamentCnt 조회 스크립트를 시작합니다.");
 
     const networkName = network.name;
     console.log("🌐 실행 네트워크:", networkName);
@@ -70,21 +71,22 @@ async function main() {
         signer
     );
 
-    console.log("🔎 themeCnt 조회 중... themeId =", THEME_ID);
-    const themeCntBn = await contract.themeCnt(THEME_ID);
+    // 컨트랙트의 public 매핑: mapping(uint16 => uint256) public tournamentCnt;
+    console.log("🔎 tournamentCnt 조회 중... tournamentId =", TOURNAMENT_ID);
+    const tournamentCntBn = await contract.tournamentCnt(TOURNAMENT_ID);
 
     console.log("✅ 조회 완료");
-    console.log("  - themeId:", THEME_ID);
-    console.log("  - themeCnt (raw BigNumber):", themeCntBn);
-    console.log("  - themeCnt (string):", themeCntBn.toString());
+    console.log("  - tournamentId:", TOURNAMENT_ID);
+    console.log("  - tournamentCnt (raw BigNumber):", tournamentCntBn);
+    console.log("  - tournamentCnt (string):", tournamentCntBn.toString());
 }
 
 main()
     .then(() => {
-        console.log("\n🎯 getThemeCnt 스크립트 실행 완료");
+        console.log("\n🎯 getTournamentCnt 스크립트 실행 완료");
         process.exit(0);
     })
     .catch((error) => {
-        console.error("❌ getThemeCnt 스크립트 실행 실패:", error);
+        console.error("❌ getTournamentCnt 스크립트 실행 실패:", error);
         process.exit(1);
     });

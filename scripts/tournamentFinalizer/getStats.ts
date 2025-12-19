@@ -6,7 +6,7 @@ import path from "path";
 // ✏️ 조회할 themeId, itemId (필요시 수정하거나 CLI 인자로 교체)
 // ============================================================
 const THEME_ID: number = 1;
-const ITEM_ID: number = 12591;
+const ITEM_ID: number = 26605;
 
 // deployment-info.json 에서 TournamentFinalizer 주소 읽기
 function loadTournamentFinalizerAddressFromDeploymentInfo(): string {

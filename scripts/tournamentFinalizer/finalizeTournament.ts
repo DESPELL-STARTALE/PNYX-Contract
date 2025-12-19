@@ -9,8 +9,9 @@ import path from "path";
 // finalizeTournament 에 전달할 themeId
 const THEME_ID: number = 1;
 
-// 참가자 수(64강 고정)
-const PARTICIPANT_COUNT = 64;
+// 참가자 수 (2의 제곱수, 2명 이상 1024명 이하)
+// 참가자 수 * 2 = 바이트 길이 (4 ~ 2048 바이트, 2의 제곱수)
+const PARTICIPANT_COUNT = 64; // 기본값: 64명 (128 바이트)
 
 // 참가자 ID 범위 (uint16)
 const PARTICIPANT_MIN_ID = 0;
@@ -22,15 +23,10 @@ const PARTICIPANT_MAX_ID = 65535;
 
 // uint16 배열을 Big-endian bytes(hex string)로 변환
 function encodeUint16ArrayBE(values: number[]): string {
-    if (values.length !== PARTICIPANT_COUNT) {
-        throw new Error(`참가자 배열 길이는 ${PARTICIPANT_COUNT}여야 합니다. 현재 길이: ${values.length}`);
-    }
+    const byteLength = values.length * 2;
 
     let hex = "0x";
     for (const v of values) {
-        if (!Number.isInteger(v) || v < 0 || v > 0xffff) {
-            throw new Error(`uint16 범위를 벗어났습니다: ${v}`);
-        }
         hex += v.toString(16).padStart(4, "0");
     }
     return hex;
@@ -87,12 +83,6 @@ function generateRandomParticipantsUnique(
     minId: number,
     maxId: number
 ): number[] {
-    if (count <= 0) {
-        throw new Error("count 는 1 이상이어야 합니다.");
-    }
-    if (minId < 0 || maxId > 0xffff || minId > maxId) {
-        throw new Error("참가자 ID 범위가 잘못되었습니다.");
-    }
     const range = maxId - minId + 1;
     if (range < count) {
         throw new Error("선택 가능한 ID 범위보다 count 가 더 큽니다. 유니크한 값 생성 불가.");
@@ -132,10 +122,6 @@ export function pickParticipantsWithDuplicate(): number[] {
         PARTICIPANT_MIN_ID,
         PARTICIPANT_MAX_ID
     );
-
-    if (participants.length < 2) {
-        throw new Error("중복 참가자를 만들기 위해서는 최소 2명 이상의 참가자가 필요합니다.");
-    }
 
     const i = Math.floor(Math.random() * participants.length);
     let j = Math.floor(Math.random() * participants.length);
@@ -181,13 +167,17 @@ async function main() {
     // console.log("participants:", ethers.dataLength(encodeUint16ArrayBE(participants)));
     const tournamentData = encodeUint16ArrayBE(participants);
 
-    const winner = participants[0];
-    const runnerUp = participants[32];
+    // 컨트랙트에서 우승자와 준우승자는 다음과 같이 계산됩니다:
+    // - 우승자(first): offset 0에서 읽은 uint16 값
+    // - 준우승자(second): offset len/2에서 읽은 uint16 값
+    const winner = participants[0]; // 첫 번째 아이템 (offset 0)
+    const runnerUp = participants[participants.length / 2]; // 중간 지점 아이템 (offset len/2)
 
     console.log("🎯 themeId:", THEME_ID);
+    console.log("👥 참가자 수:", participants.length, `(${ethers.dataLength(tournamentData)} 바이트)`);
     console.log("👑 참가자:", participants);
-    console.log("👑 우승자(first) 후보 ID:", winner);
-    console.log("🥈 준우승자(second) 후보 ID:", runnerUp);
+    console.log("👑 우승자(first) 후보 ID:", winner, `(index ${0})`);
+    console.log("🥈 준우승자(second) 후보 ID:", runnerUp, `(index ${participants.length / 2})`);
 
     // 컨트랙트 인스턴스 생성
     const contract = await ethers.getContractAt(
@@ -197,6 +187,9 @@ async function main() {
     );
 
     console.log("📝 finalizeTournament 트랜잭션 전송 중...");
+    // 컨트랙트 함수 시그니처: finalizeTournament(uint16 _tournamentId, bytes calldata _tournamentData)
+    // - _tournamentId: 테마 ID (THEME_ID)
+    // - _tournamentData: Big-endian으로 인코딩된 uint16 배열 (4 ~ 2048 바이트, 2의 제곱수)
     const tx = await contract.finalizeTournament(THEME_ID, tournamentData);
     console.log("⏳ 트랜잭션 전송 완료. hash:", tx.hash);
 
@@ -219,10 +212,14 @@ async function main() {
                 console.log("    - args:", parsed?.args);
 
                 if (parsed?.name === "TournamentFinalized") {
+                    // 이벤트 파라미터 순서: (address indexed user, bytes32 indexed tournamentDataHash, uint16 themeId, bytes tournamentData)
+                    // user와 tournamentDataHash는 indexed이므로 이벤트 로그의 topics 배열에서도 조회 가능
                     const user = parsed?.args[0];
-                    const themeId = parsed?.args[1];
-                    const tournamentDataBytes = parsed?.args[2];
+                    const tournamentDataHash = parsed?.args[1];
+                    const themeId = parsed?.args[2];
+                    const tournamentDataBytes = parsed?.args[3];
                     console.log("    - user:", user);
+                    console.log("    - tournamentDataHash (indexed):", tournamentDataHash);
                     console.log("    - themeId:", themeId.toString());
                     console.log(
                         "    - tournamentData(bytes 길이):",

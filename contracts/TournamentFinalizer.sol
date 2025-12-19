@@ -21,11 +21,13 @@ contract TournamentFinalizer is Ownable {
      * @notice 토너먼트 종료 이벤트
      * @dev 토너먼트 종료 시 발생
      * @param user 주소
+     * @param tournamentDataHash 토너먼트 데이터 해시 (keccak256)
      * @param themeId 테마 ID
      * @param tournamentData 토너먼트 데이터
      */
     event TournamentFinalized(
         address indexed user,
+        bytes32 indexed tournamentDataHash,
         uint16 themeId,
         bytes tournamentData
     );
@@ -49,7 +51,7 @@ contract TournamentFinalizer is Ownable {
      * @notice 테마 횟수 매핑
      * @dev 테마 ID와 횟수를 저장
      */
-    mapping(uint16 => uint256) public themeCnt;
+    mapping(uint16 => uint256) public tournamentCnt;
     /**
      * @notice 아이템 통계 매핑
      * @dev 테마 ID와 아이템 ID와 횟수를 저장
@@ -65,28 +67,34 @@ contract TournamentFinalizer is Ownable {
     /**
      * @notice 토너먼트 종료 함수
      * @dev 토너먼트 종료 시 발생
-     * @param _themeId 테마 ID
+     * @param _tournamentId 토너먼트 ID
      * @param _tournamentData 토너먼트 데이터
      */
     function finalizeTournament(
-        uint16 _themeId,
+        uint16 _tournamentId,
         bytes calldata _tournamentData
     ) external {
         uint256 len = _tournamentData.length; // 토너먼트 정보 배열 길이
-        if (len != 128) revert InvalidTournament(len); // 토너먼트 정보 배열 길이는 128 (64강 고정)
+        require(
+            len >= 4 && len <= 2048 && (len & (len - 1)) == 0,
+            "Invalid bytes length"
+        ); // 토너먼트 정보 배열 길이는 4 ~ 2048 이며 2의 제곱수여야 함
         _requireAllUniqueUint16BE(_tournamentData); // 모든 아이템은 0이상이며 다른 값을 가지고 있어야 함
 
         // 테마 횟수 증가
-        themeCnt[_themeId] += 1;
+        tournamentCnt[_tournamentId] += 1;
 
         // 우승자와 준우승자 횟수 증가
         uint16 first = _readUint16BE(_tournamentData, 0);
         uint256 secondOffset = len / 2;
         uint16 second = _readUint16BE(_tournamentData, secondOffset);
-        stats[_themeId][first].firstCnt += 1;
-        stats[_themeId][second].secondCnt += 1;
+        stats[_tournamentId][first].firstCnt += 1;
+        stats[_tournamentId][second].secondCnt += 1;
 
-        emit TournamentFinalized(msg.sender, _themeId, _tournamentData);
+        // 토너먼트 데이터 해시 계산
+        bytes32 tournamentDataHash = keccak256(_tournamentData);
+
+        emit TournamentFinalized(msg.sender, tournamentDataHash, _tournamentId, _tournamentData);
     }
 
     /**

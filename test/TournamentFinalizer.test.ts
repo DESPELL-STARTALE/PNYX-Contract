@@ -35,7 +35,7 @@ describe("TournamentFinalizer", function () {
 
             const themeId = 1;
 
-            // 64개의 유니크한 uint16 값 (1..64)
+            // 64개의 유니크한 uint16 값 (1..64) -> 128 bytes (2의 제곱수)
             const participants: number[] = [];
             for (let i = 0; i < 64; i++) {
                 participants.push(i + 1);
@@ -46,14 +46,54 @@ describe("TournamentFinalizer", function () {
             const first = participants[0]; // index 0
             const second = participants[32]; // len/2 = 128/2 = 64 -> index 32 (0-based)
 
+            // 이벤트 파라미터 순서: (address indexed user, bytes32 tournamentDataHash, uint16 themeId, bytes tournamentData)
+            const tournamentDataHash = ethers.keccak256(data);
+
             await expect(
                 tournamentFinalizer.finalizeTournament(themeId, data)
             )
                 .to.emit(tournamentFinalizer, "TournamentFinalized")
-                .withArgs(owner.address, themeId, data);
+                .withArgs(owner.address, tournamentDataHash, themeId, data);
 
-            const themeCnt = await tournamentFinalizer.themeCnt(themeId);
-            expect(themeCnt).to.equal(1n);
+            // 컨트랙트의 public 매핑: mapping(uint16 => uint256) public tournamentCnt;
+            const tournamentCnt = await tournamentFinalizer.tournamentCnt(themeId);
+            expect(tournamentCnt).to.equal(1n);
+
+            const firstStat = await tournamentFinalizer.stats(themeId, first);
+            const secondStat = await tournamentFinalizer.stats(themeId, second);
+
+            expect(firstStat.firstCnt).to.equal(1n);
+            expect(firstStat.secondCnt).to.equal(0n);
+            expect(secondStat.firstCnt).to.equal(0n);
+            expect(secondStat.secondCnt).to.equal(1n);
+        });
+
+        it("4 바이트(최소 길이) 토너먼트 데이터를 처리한다", async function () {
+            const { tournamentFinalizer, owner } = await loadFixture(
+                deployTournamentFinalizerFixture
+            );
+
+            const themeId = 1;
+
+            // 2개 참가자 -> 4 bytes (최소 길이, 2의 제곱수)
+            const participants: number[] = [1, 2];
+            const data = encodeUint16ArrayBE(participants);
+
+            const first = participants[0]; // index 0
+            const second = participants[1]; // len/2 = 4/2 = 2 -> index 1 (0-based)
+
+            // 이벤트 파라미터 순서: (address indexed user, bytes32 tournamentDataHash, uint16 themeId, bytes tournamentData)
+            const tournamentDataHash = ethers.keccak256(data);
+
+            await expect(
+                tournamentFinalizer.finalizeTournament(themeId, data)
+            )
+                .to.emit(tournamentFinalizer, "TournamentFinalized")
+                .withArgs(owner.address, tournamentDataHash, themeId, data);
+
+            // 컨트랙트의 public 매핑: mapping(uint16 => uint256) public tournamentCnt;
+            const tournamentCnt = await tournamentFinalizer.tournamentCnt(themeId);
+            expect(tournamentCnt).to.equal(1n);
 
             const firstStat = await tournamentFinalizer.stats(themeId, first);
             const secondStat = await tournamentFinalizer.stats(themeId, second);
@@ -119,8 +159,9 @@ describe("TournamentFinalizer", function () {
             await tournamentFinalizer.finalizeTournament(themeId, data);
             await tournamentFinalizer.finalizeTournament(themeId, data);
 
-            const themeCnt = await tournamentFinalizer.themeCnt(themeId);
-            expect(themeCnt).to.equal(2n);
+            // 컨트랙트의 public 매핑: mapping(uint16 => uint256) public tournamentCnt;
+            const tournamentCnt = await tournamentFinalizer.tournamentCnt(themeId);
+            expect(tournamentCnt).to.equal(2n);
 
             const firstStat = await tournamentFinalizer.stats(themeId, first);
             const secondStat = await tournamentFinalizer.stats(themeId, second);
@@ -131,48 +172,61 @@ describe("TournamentFinalizer", function () {
             expect(secondStat.secondCnt).to.equal(2n);
         });
 
-        it("토너먼트 데이터 길이가 128 바이트보다 짧으면 InvalidTournament 에러로 revert한다", async function () {
+        it("토너먼트 데이터 길이가 4 바이트보다 짧으면 revert한다", async function () {
             const { tournamentFinalizer } = await loadFixture(
                 deployTournamentFinalizerFixture
             );
 
             const themeId = 1;
 
-            // 10개 참가자 -> 20 bytes
+            // 1개 참가자 -> 2 bytes (4보다 작음)
+            const shortParticipants: number[] = [1];
+            const shortData = encodeUint16ArrayBE(shortParticipants);
+
+            // bytes 길이는 1 * 2 = 2
+            await expect(
+                tournamentFinalizer.finalizeTournament(themeId, shortData)
+            ).to.be.revertedWith("Invalid bytes length");
+        });
+
+        it("토너먼트 데이터 길이가 2의 제곱수가 아니면 revert한다", async function () {
+            const { tournamentFinalizer } = await loadFixture(
+                deployTournamentFinalizerFixture
+            );
+
+            const themeId = 1;
+
+            // 10개 참가자 -> 20 bytes (2의 제곱수가 아님)
             const shortParticipants: number[] = [];
             for (let i = 0; i < 10; i++) {
                 shortParticipants.push(i + 1);
             }
             const shortData = encodeUint16ArrayBE(shortParticipants);
 
-            // bytes 길이는 10 * 2 = 20
+            // bytes 길이는 10 * 2 = 20 (2의 제곱수가 아님)
             await expect(
                 tournamentFinalizer.finalizeTournament(themeId, shortData)
-            )
-                .to.be.revertedWithCustomError(tournamentFinalizer, "InvalidTournament")
-                .withArgs(20);
+            ).to.be.revertedWith("Invalid bytes length");
         });
 
-        it("토너먼트 데이터 길이가 128 바이트보다 길면 InvalidTournament 에러로 revert한다", async function () {
+        it("토너먼트 데이터 길이가 2048 바이트보다 길면 revert한다", async function () {
             const { tournamentFinalizer } = await loadFixture(
                 deployTournamentFinalizerFixture
             );
 
             const themeId = 1;
 
-            // 65개 참가자 -> 130 bytes
+            // 1025개 참가자 -> 2050 bytes (2048보다 큼)
             const longParticipants: number[] = [];
-            for (let i = 0; i < 65; i++) {
+            for (let i = 0; i < 1025; i++) {
                 longParticipants.push(i + 1);
             }
             const longData = encodeUint16ArrayBE(longParticipants);
 
-            // bytes 길이는 65 * 2 = 130
+            // bytes 길이는 1025 * 2 = 2050
             await expect(
                 tournamentFinalizer.finalizeTournament(themeId, longData)
-            )
-                .to.be.revertedWithCustomError(tournamentFinalizer, "InvalidTournament")
-                .withArgs(130);
+            ).to.be.revertedWith("Invalid bytes length");
         });
 
         it("토너먼트 데이터에 중복 아이템이 있으면 InvalidItem 에러로 revert한다", async function () {
@@ -216,8 +270,9 @@ describe("TournamentFinalizer", function () {
 
             await tournamentFinalizer.finalizeTournament(themeId, data);
 
-            const themeCnt = await tournamentFinalizer.themeCnt(themeId);
-            expect(themeCnt).to.equal(1n);
+            // 컨트랙트의 public 매핑: mapping(uint16 => uint256) public tournamentCnt;
+            const tournamentCnt = await tournamentFinalizer.tournamentCnt(themeId);
+            expect(tournamentCnt).to.equal(1n);
         });
     });
 });
