@@ -22,13 +22,13 @@ contract TournamentFinalizer is Ownable {
      * @dev 토너먼트 종료 시 발생
      * @param user 주소
      * @param tournamentDataHash 토너먼트 데이터 해시 (keccak256)
-     * @param themeId 테마 ID
+     * @param tournamentId 토너먼트 ID
      * @param tournamentData 토너먼트 데이터
      */
     event TournamentFinalized(
         address indexed user,
         bytes32 indexed tournamentDataHash,
-        uint16 themeId,
+        uint16 tournamentId,
         bytes tournamentData
     );
 
