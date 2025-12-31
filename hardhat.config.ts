@@ -33,6 +33,14 @@ const config: HardhatUserConfig = {
             url: process.env.SONEIUM_MAINNET_PROVIDER_URL,
             accounts: [process.env.PRIVATE_KEY || '']
         },
+        EthSepoliaTestnet: {
+            url: process.env.ETH_SEPOLIA_TESTNET_PROVIDER_URL,
+            accounts: [process.env.PRIVATE_KEY || '']
+        },
+        BaseSepoliaTestnet: {
+            url: process.env.BASE_SEPOLIA_TESTNET_PROVIDER_URL,
+            accounts: [process.env.PRIVATE_KEY || '']
+        }
     },
     etherscan: {
         apiKey: {

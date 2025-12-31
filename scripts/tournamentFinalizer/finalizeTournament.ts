@@ -6,8 +6,8 @@ import path from "path";
 // ✏️ 수정해서 사용할 입력 상수들
 // ============================================================
 
-// finalizeTournament 에 전달할 themeId
-const THEME_ID: number = 1;
+// finalizeTournament 에 전달할 tournamentId
+const TOURNAMENT_ID: number = 1;
 
 // 참가자 수 (2의 제곱수, 2명 이상 1024명 이하)
 // 참가자 수 * 2 = 바이트 길이 (4 ~ 2048 바이트, 2의 제곱수)
@@ -15,7 +15,7 @@ const PARTICIPANT_COUNT = 64; // 기본값: 64명 (128 바이트)
 
 // 참가자 ID 범위 (uint16)
 const PARTICIPANT_MIN_ID = 0;
-const PARTICIPANT_MAX_ID = 65535;
+const PARTICIPANT_MAX_ID = 69;
 
 // ============================================================
 // 내부 유틸 함수들
@@ -173,7 +173,7 @@ async function main() {
     const winner = participants[0]; // 첫 번째 아이템 (offset 0)
     const runnerUp = participants[participants.length / 2]; // 중간 지점 아이템 (offset len/2)
 
-    console.log("🎯 themeId:", THEME_ID);
+    console.log("🎯 tournamentId:", TOURNAMENT_ID);
     console.log("👥 참가자 수:", participants.length, `(${ethers.dataLength(tournamentData)} 바이트)`);
     console.log("👑 참가자:", participants);
     console.log("👑 우승자(first) 후보 ID:", winner, `(index ${0})`);
@@ -188,9 +188,9 @@ async function main() {
 
     console.log("📝 finalizeTournament 트랜잭션 전송 중...");
     // 컨트랙트 함수 시그니처: finalizeTournament(uint16 _tournamentId, bytes calldata _tournamentData)
-    // - _tournamentId: 테마 ID (THEME_ID)
+    // - _tournamentId: 테마 ID (TOURNAMENT_ID)
     // - _tournamentData: Big-endian으로 인코딩된 uint16 배열 (4 ~ 2048 바이트, 2의 제곱수)
-    const tx = await contract.finalizeTournament(THEME_ID, tournamentData);
+    const tx = await contract.finalizeTournament(TOURNAMENT_ID, tournamentData);
     console.log("⏳ 트랜잭션 전송 완료. hash:", tx.hash);
 
     const receipt = await tx.wait();
@@ -212,15 +212,15 @@ async function main() {
                 console.log("    - args:", parsed?.args);
 
                 if (parsed?.name === "TournamentFinalized") {
-                    // 이벤트 파라미터 순서: (address indexed user, bytes32 indexed tournamentDataHash, uint16 themeId, bytes tournamentData)
+                    // 이벤트 파라미터 순서: (address indexed user, bytes32 indexed tournamentDataHash, uint16 tournamentId, bytes tournamentData)
                     // user와 tournamentDataHash는 indexed이므로 이벤트 로그의 topics 배열에서도 조회 가능
                     const user = parsed?.args[0];
                     const tournamentDataHash = parsed?.args[1];
-                    const themeId = parsed?.args[2];
+                    const tournamentId = parsed?.args[2];
                     const tournamentDataBytes = parsed?.args[3];
                     console.log("    - user:", user);
                     console.log("    - tournamentDataHash (indexed):", tournamentDataHash);
-                    console.log("    - themeId:", themeId.toString());
+                    console.log("    - tournamentId:", tournamentId.toString());
                     console.log(
                         "    - tournamentData(bytes 길이):",
                         ethers.dataLength(tournamentDataBytes)

@@ -5,8 +5,8 @@
   },
   "deployer": "0xf5F82F99515f068Cf101e247bc58ffD3d1dCc63F",
   "contracts": {
-    "tournamentFinalizer": "0xf9f2998bC1E986662e029F1f20B3b0A5B58b5857"
+    "tournamentFinalizer": "0x5c0F0Da04Be158e23384a4e3A11397d48589B0fd"
   },
-  "deploymentTime": "2025-12-18T23:57:58.666Z",
-  "deploymentBlock": 21453971
+  "deploymentTime": "2025-12-23T11:43:08.010Z",
+  "deploymentBlock": 21647926
 }
