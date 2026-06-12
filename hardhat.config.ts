@@ -44,8 +44,8 @@ const config: HardhatUserConfig = {
     },
     etherscan: {
         apiKey: {
-            // Blockscout는 실질적으로 apiKey가 필요 없어서
-            // 아무 non-empty 문자열이면 됨
+            // Blockscout does not actually require an apiKey,
+            // so any non-empty string works
             SoneiumMainnet: "empty",
         },
         customChains: [

@@ -7,45 +7,45 @@ dotenv.config();
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-// 대기 함수
+// wait helper
 async function waitIfNeeded() {
-    console.log("⏳ 다음 tx를 위해 1초 대기...");
+    console.log("⏳ Waiting 1 second before the next tx...");
     await sleep(1000);
 }
 
 async function main() {
-    console.log("🚀 TournamentFinalizer 컨트랙트 배포를 시작합니다... (OWNER_KEY 사용)");
+    console.log("🚀 Starting TournamentFinalizer contract deployment... (using OWNER_KEY)");
 
-    // OWNER_KEY 환경변수 확인
+    // check the OWNER_KEY environment variable
     const ownerKey = process.env.OWNER_KEY;
     if (!ownerKey) {
-        throw new Error("❌ .env 파일에 OWNER_KEY를 설정해야 합니다.");
+        throw new Error("❌ You must set OWNER_KEY in the .env file.");
     }
-    
+
     const rpcUrl = (network.config as any).url;
 
     if (!rpcUrl) {
         throw new Error(
-            `❌ 현재 네트워크(${network.name})의 RPC URL을 찾을 수 없습니다. hardhat.config.ts 또는 .env를 확인하세요.`
+            `❌ Could not find the RPC URL for the current network (${network.name}). Check hardhat.config.ts or .env.`
         );
     }
 
     const provider = new ethers.JsonRpcProvider(rpcUrl);
     const ownerWallet = new ethers.Wallet(ownerKey, provider);
 
-    console.log("🌐 실행 네트워크:", network.name);
+    console.log("🌐 Network:", network.name);
     console.log("🔗 RPC URL:", rpcUrl);
-    console.log("📋 배포 설정:");
+    console.log("📋 Deployment settings:");
     console.log("  - Owner Address:", ownerWallet.address);
 
-    // 배포 비용 추적
+    // track deployment cost
     let totalGasCost = 0n;
     const deploymentDetails: any[] = [];
 
     try {
-        // TournamentFinalizer 컨트랙트 배포
+        // deploy the TournamentFinalizer contract
         let tournamentFinalizerAddr;
-        console.log("\n2️⃣ TournamentFinalizer 컨트랙트 배포 중...");
+        console.log("\n2️⃣ Deploying the TournamentFinalizer contract...");
         const TournamentFinalizer = await ethers.getContractFactory("TournamentFinalizer");
         const tournamentFinalizer = await TournamentFinalizer.connect(ownerWallet).deploy();
         const tournamentFinalizerDeployTx = tournamentFinalizer.deploymentTransaction();
@@ -65,38 +65,38 @@ async function main() {
                     gasPrice: ethers.formatUnits(receipt.gasPrice, "gwei"),
                     cost: ethers.formatEther(gasCost)
                 });
-                console.log("✅ TournamentFinalizer 컨트랙트 배포 완료:", tournamentFinalizerAddr);
-                console.log("  📝 트랜잭션 해시:", receipt.hash);
-                console.log("  ⛽ 가스 사용량:", receipt.gasUsed.toString());
-                console.log("  💰 배포 비용:", ethers.formatEther(gasCost), "ETH");
+                console.log("✅ TournamentFinalizer contract deployed:", tournamentFinalizerAddr);
+                console.log("  📝 Transaction hash:", receipt.hash);
+                console.log("  ⛽ Gas used:", receipt.gasUsed.toString());
+                console.log("  💰 Deployment cost:", ethers.formatEther(gasCost), "ETH");
             }
         }
         await waitIfNeeded();
 
-        // 배포 결과 출력
-        console.log("\n🎉 모든 컨트랙트 배포가 완료되었습니다!");
-        console.log("\n📋 배포된 컨트랙트 주소들:");
+        // print deployment results
+        console.log("\n🎉 All contracts have been deployed!");
+        console.log("\n📋 Deployed contract addresses:");
         console.log("  - TournamentFinalizer:", tournamentFinalizerAddr);
 
-        // 총 비용 요약
-        console.log("\n💰 배포 비용 요약:");
+        // total cost summary
+        console.log("\n💰 Deployment cost summary:");
         console.log("  ┌─────────────────────────────────────────────────────");
-        console.log(`  │ 총 가스 비용: ${ethers.formatEther(totalGasCost)} ETH`);
+        console.log(`  │ Total gas cost: ${ethers.formatEther(totalGasCost)} ETH`);
         console.log("  └─────────────────────────────────────────────────────");
 
-        console.log("\n📊 배포 상세 내역:");
+        console.log("\n📊 Deployment details:");
         deploymentDetails.forEach((detail, index) => {
-            console.log(`  ${index + 1}. ${detail.contract} 컨트랙트`);
-            console.log(`     - 주소: ${detail.address}`);
-            console.log(`     - 트랜잭션 해시: ${detail.txHash}`);
-            console.log(`     - 가스 사용량: ${detail.gasUsed}`);
-            console.log(`     - 가스 가격: ${detail.gasPrice} Gwei`);
-            console.log(`     - 배포 비용: ${detail.cost} ETH`);
+            console.log(`  ${index + 1}. ${detail.contract} contract`);
+            console.log(`     - Address: ${detail.address}`);
+            console.log(`     - Transaction hash: ${detail.txHash}`);
+            console.log(`     - Gas used: ${detail.gasUsed}`);
+            console.log(`     - Gas price: ${detail.gasPrice} Gwei`);
+            console.log(`     - Deployment cost: ${detail.cost} ETH`);
         });
 
         const deploymentInfo = {
             network: await provider.getNetwork(),
-            deployer: ownerWallet.address, // OWNER_KEY로 배포한 주소
+            deployer: ownerWallet.address, // address that deployed with OWNER_KEY
             contracts: {
                 tournamentFinalizer: tournamentFinalizerAddr,
             },
@@ -104,7 +104,7 @@ async function main() {
             deploymentBlock: await provider.getBlockNumber()
         };
 
-        console.log("\n💾 배포 정보를 scripts/output/deployment-info.json 파일에 저장합니다...");
+        console.log("\n💾 Saving deployment info to scripts/output/deployment-info.json...");
         const outputDir = path.join(__dirname, 'output');
         if (!fs.existsSync(outputDir)) {
             fs.mkdirSync(outputDir, { recursive: true });
@@ -115,19 +115,19 @@ async function main() {
             JSON.stringify(deploymentInfo, null, 2)
         );
 
-        console.log("✅ 배포 정보 저장 완료");
+        console.log("✅ Deployment info saved");
     } catch (error) {
-        console.error("❌ 배포 중 오류가 발생했습니다:", error);
+        console.error("❌ An error occurred during deployment:", error);
         process.exit(1);
     }
 }
 
 main()
     .then(() => {
-        console.log("\n🎯 배포 스크립트 실행 완료 (OWNER_KEY 사용)");
+        console.log("\n🎯 Deployment script finished (using OWNER_KEY)");
         process.exit(0)
     })
     .catch((error) => {
-        console.error("❌ 배포 스크립트 실행 실패:", error);
+        console.error("❌ Deployment script failed:", error);
         process.exit(1);
     });
