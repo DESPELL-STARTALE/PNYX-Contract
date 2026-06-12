@@ -2,25 +2,26 @@
 
 ## Overview
 
-PNYX-Contract is a Solidity smart contract project built with Hardhat for managing tournament finalization and statistics. The project provides a decentralized solution for tracking tournament results, including winner and runner-up statistics for different tournament themes and items.
+PNYX-Contract is a Solidity smart contract project built with Hardhat for finalizing tournaments via EIP-712 signatures. The contract verifies a signature issued by the PNYX backend and emits an event for off-chain indexing; it stores no tournament results on-chain.
 
-The main contract, `TournamentFinalizer`, allows users to finalize tournaments by submitting tournament data, which is then processed to update statistics and emit events for off-chain tracking.
+The main contract, `TournamentFinalizer`, lets a user finalize a tournament by submitting the backend-issued EIP-712 signature along with the tournament data. The contract verifies the signature, consumes a per-user nonce (replay protection), and emits a `TournamentFinalized` event.
 
 ## Contract List
 
 ### TournamentFinalizer
 
-The main smart contract that handles tournament finalization and statistics tracking.
+The main smart contract that verifies EIP-712 finalize signatures and emits events.
 
 **Key Features:**
-- Finalizes tournaments with participant data
-- Tracks tournament counts per theme
-- Maintains statistics for items (first place and second place counts)
-- Emits events for tournament finalization
-- Validates tournament data (length, uniqueness of participants)
+- Verifies a backend-issued EIP-712 signature over the caller and tournament data
+- Per-user nonce for replay protection (`nonces(address)`)
+- Deadline-based signature expiry
+- Owner-updatable authorized signer and EIP-712 typehash
+- Emits `TournamentFinalized` for off-chain indexing
 
 **Main Functions:**
-- `finalizeTournament(uint16 _tournamentId, bytes calldata _tournamentData)`: Finalizes a tournament and updates statistics
+- `finalizeTournament(uint16 _tournamentId, bytes calldata _tournamentData, uint256 _point, uint256 _deadline, bytes calldata _signature)`: Verifies the EIP-712 signature and emits `TournamentFinalized`
+- `setFinalizeSigner(address)` / `setFinalizeTypeHash(string)`: owner-only configuration
 
 ## Project Structure
 
@@ -34,8 +35,7 @@ PNYX-Contract/
 │   │   └── deployment-info.json
 │   └── tournamentFinalizer/
 │       ├── finalizeTournament.ts
-│       ├── getStats.ts
-│       └── getTournamentCnt.ts
+│       └── getNonce.ts
 ├── test/                   # Test files
 │   └── TournamentFinalizer.test.ts
 ├── hardhat.config.ts       # Hardhat configuration

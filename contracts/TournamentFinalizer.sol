@@ -2,25 +2,41 @@
 pragma solidity ^0.8.28;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 
-contract TournamentFinalizer is Ownable {
-    // def. STRUCT
-    /**
-     * @notice Item statistics struct
-     * @dev Stores winner and runner-up counts
-     * @param firstCnt Winner (first place) count
-     * @param secondCnt Runner-up (second place) count
-     */
-    struct ItemStat {
-        uint256 firstCnt;
-        uint256 secondCnt;
-    }
+contract TournamentFinalizer is Ownable, EIP712 {
+    // =========================
+    // ERROR
+    // =========================
+    /// @notice Thrown when the signature deadline has passed.
+    error ExpiredSignature();
+    /// @notice Thrown when the signature cannot be recovered to a valid address.
+    error InvalidSignature();
+    /// @notice Thrown when the recovered signer is not the authorized signer.
+    error InvalidSigner();
+    /// @notice Thrown when a zero address is supplied where it is not allowed.
+    error ZeroAddress();
+    /// @notice Thrown when a setter is called with the value already in storage.
+    error ValueUnchanged();
 
-    // def. EVENT
+    // =========================
+    // STATE
+    // =========================
+    /// @notice EIP-712 typehash for the FinalizeTournament struct.
+    bytes32 private finalizeTypeHash;
+    /// @notice Address authorized to sign finalizeTournament payloads.
+    address private finalizeSigner;
+    /// @notice Per-user nonce, consumed on each successful finalize (replay protection).
+    mapping(address => uint256) public nonces;
+
+    // =========================
+    // EVENT
+    // =========================
     /**
      * @notice Tournament finalized event
-     * @dev Emitted when a tournament is finalized
-     * @param user Caller address
+     * @dev Emitted after a finalizeTournament signature is verified
+     * @param user Caller address (the signed `user`)
      * @param tournamentDataHash Tournament data hash (keccak256)
      * @param tournamentId Tournament ID
      * @param tournamentData Tournament data
@@ -31,112 +47,122 @@ contract TournamentFinalizer is Ownable {
         uint16 tournamentId,
         bytes tournamentData
     );
-
-    // def. ERROR
     /**
-     * @notice Tournament data validation error
-     * @dev Thrown when the tournament data length is not 128
-     * @param bytesLength Tournament data length
+     * @notice Emitted when the authorized signer is updated.
+     * @param oldSigner The previous signer address
+     * @param newSigner The new signer address
      */
-    error InvalidTournament(uint256 bytesLength);
+    event SignerUpdated(address indexed oldSigner, address indexed newSigner);
     /**
-     * @notice Item validation error
-     * @dev Thrown when an item value is not valid
-     * @param value Item value
+     * @notice Emitted when the EIP-712 typehash is updated.
+     * @param oldHash The previous typehash
+     * @param newHash The new typehash
      */
-    error InvalidItem(uint16 value);
+    event TypeHashUpdated(bytes32 oldHash, bytes32 newHash);
 
-    // def. VARIABLE
+    // =========================
+    // CONSTRUCTOR
+    // =========================
     /**
-     * @notice Theme count mapping
-     * @dev Stores theme ID and count
+     * @notice Creates the TournamentFinalizer contract.
+     * @param _finalizeSigner Address authorized to sign finalizeTournament payloads
+     * @param _typeString EIP-712 type string for the FinalizeTournament struct
      */
-    mapping(uint16 => uint256) public tournamentCnt;
+    constructor(
+        address _finalizeSigner,
+        string memory _typeString
+    ) Ownable(msg.sender) EIP712("TournamentFinalizer", "1") {
+        if (_finalizeSigner == address(0)) revert ZeroAddress();
+
+        finalizeSigner = _finalizeSigner;
+        finalizeTypeHash = keccak256(bytes(_typeString));
+    }
+
+    // =========================
+    // WRITE FUNCTION
+    // =========================
     /**
-     * @notice Item statistics mapping
-     * @dev Stores theme ID, item ID, and counts
-     */
-    mapping(uint16 => mapping(uint16 => ItemStat)) public stats;
-
-    // def. CONSTANT
-
-    // def. MODIFIER
-
-    constructor() Ownable(msg.sender) {}
-
-    /**
-     * @notice Tournament finalize function
-     * @dev Called when a tournament is finalized
+     * @notice Finalizes a tournament after verifying an EIP-712 signature.
+     * @dev Verifies the backend-issued signature over the caller, tournament data,
+     *      point, the caller's current nonce, and the deadline, then emits an event.
+     *      No tournament state is stored on-chain.
      * @param _tournamentId Tournament ID
-     * @param _tournamentData Tournament data
+     * @param _tournamentData Tournament data (big-endian packed uint16 item IDs)
+     * @param _point Point bound to the signature by the backend
+     * @param _deadline Signature expiration timestamp (unix seconds)
+     * @param _signature EIP-712 signature produced by the authorized signer
      */
     function finalizeTournament(
         uint16 _tournamentId,
-        bytes calldata _tournamentData
+        bytes calldata _tournamentData,
+        uint256 _point,
+        uint256 _deadline,
+        bytes calldata _signature
     ) external {
-        uint256 len = _tournamentData.length; // tournament data array length
-        require(
-            len >= 4 && len <= 2048 && (len & (len - 1)) == 0,
-            "Invalid bytes length"
-        ); // tournament data length must be between 4 and 2048 and a power of two
-        _requireAllUniqueUint16BE(_tournamentData); // every item must be non-negative and unique
+        if (block.timestamp > _deadline) revert ExpiredSignature();
 
-        // increment theme count
-        tournamentCnt[_tournamentId] += 1;
-
-        // increment winner and runner-up counts
-        uint16 first = _readUint16BE(_tournamentData, 0);
-        uint256 secondOffset = len / 2;
-        uint16 second = _readUint16BE(_tournamentData, secondOffset);
-        stats[_tournamentId][first].firstCnt += 1;
-        stats[_tournamentId][second].secondCnt += 1;
-
-        // compute tournament data hash
         bytes32 tournamentDataHash = keccak256(_tournamentData);
 
-        emit TournamentFinalized(msg.sender, tournamentDataHash, _tournamentId, _tournamentData);
-    }
+        bytes32 structHash = keccak256(
+            abi.encode(
+                finalizeTypeHash,
+                msg.sender,
+                _tournamentId,
+                tournamentDataHash,
+                _point,
+                nonces[msg.sender],
+                _deadline
+            )
+        );
 
-    /**
-     * @notice Every item must be non-negative and unique
-     * @dev Every item must be non-negative and unique
-     * @param data Tournament data
-     */
-    function _requireAllUniqueUint16BE(bytes calldata data) internal pure {
-        uint256 n = data.length / 2; // participant count
-        uint256[256] memory seen; // bitset covering the full 0 .. 2^16-1 range
+        bytes32 digest = _hashTypedDataV4(structHash);
+        address recoveredSigner = ECDSA.recover(digest, _signature);
 
-        for (uint256 i = 0; i < n; i++) {
-            // every item must be non-negative and unique
-            uint256 off = i * 2;
+        if (recoveredSigner == address(0)) revert InvalidSignature();
+        if (recoveredSigner != finalizeSigner) revert InvalidSigner();
 
-            // Big-endian: [MSB][LSB]
-            uint16 v = _readUint16BE(data, off);
-
-            uint256 wordIndex = uint256(v) >> 8; // high 8 bits (0..255)
-            uint256 bitIndex = uint256(v) & 0xFF; // low 8 bits (0..255)
-            uint256 mask = 1 << bitIndex;
-
-            uint256 word = seen[wordIndex];
-            if ((word & mask) != 0) revert InvalidItem(v);
-
-            seen[wordIndex] = word | mask;
+        unchecked {
+            nonces[msg.sender] += 1;
         }
+
+        emit TournamentFinalized(
+            msg.sender,
+            tournamentDataHash,
+            _tournamentId,
+            _tournamentData
+        );
+    }
+
+    // =========================
+    // SET FUNCTION
+    // =========================
+    /**
+     * @notice Updates the EIP-712 typehash for the FinalizeTournament struct.
+     * @param _typeString The new type string
+     */
+    function setFinalizeTypeHash(
+        string calldata _typeString
+    ) external onlyOwner {
+        bytes32 newHash = keccak256(bytes(_typeString));
+        if (finalizeTypeHash == newHash) revert ValueUnchanged();
+
+        bytes32 oldHash = finalizeTypeHash;
+        finalizeTypeHash = newHash;
+
+        emit TypeHashUpdated(oldHash, newHash);
     }
 
     /**
-     * @notice Big-endian: [MSB][LSB]
-     * @dev Big-endian: [MSB][LSB]
-     * @param data Tournament data
-     * @param offset Offset
-     * @return v Item ID
+     * @notice Updates the authorized signer address.
+     * @param _finalizeSigner The new signer address
      */
-    function _readUint16BE(
-        bytes calldata data,
-        uint256 offset
-    ) internal pure returns (uint16 v) {
-        v =
-            (uint16(uint8(data[offset])) << 8) |
-            uint16(uint8(data[offset + 1]));
+    function setFinalizeSigner(address _finalizeSigner) external onlyOwner {
+        if (_finalizeSigner == address(0)) revert ZeroAddress();
+        if (_finalizeSigner == finalizeSigner) revert ValueUnchanged();
+
+        address oldSigner = finalizeSigner;
+        finalizeSigner = _finalizeSigner;
+
+        emit SignerUpdated(oldSigner, _finalizeSigner);
     }
 }

@@ -1,6 +1,9 @@
 import { ethers, network } from "hardhat";
 import fs from "fs";
 import path from "path";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 // ============================================================
 // ✏️ Input constants to edit before use
@@ -9,13 +12,37 @@ import path from "path";
 // tournamentId passed to finalizeTournament
 const TOURNAMENT_ID: number = 1;
 
-// participant count (a power of two, between 2 and 1024)
-// participant count * 2 = byte length (4 ~ 2048 bytes, a power of two)
+// participant count (a power of two between 2 and 1024 is the canonical bracket,
+// but the contract no longer enforces it — any even-length data is accepted)
 const PARTICIPANT_COUNT = 64; // default: 64 participants (128 bytes)
 
 // participant ID range (uint16)
 const PARTICIPANT_MIN_ID = 0;
 const PARTICIPANT_MAX_ID = 69;
+
+// point bound to the signature by the backend (here we just pick one for the demo)
+const POINT: number = 2;
+
+// signature lifetime in seconds (deadline = now + this)
+const DEADLINE_SECONDS = 30 * 60; // 30 minutes
+
+// ============================================================
+// EIP-712 domain / types (MUST match PNYX-BE + the deployed contract)
+// ============================================================
+
+const EIP712_NAME = "TournamentFinalizer";
+const EIP712_VERSION = "1";
+
+const FINALIZE_TOURNAMENT_TYPES = {
+    FinalizeTournament: [
+        { name: "user", type: "address" },
+        { name: "tournamentId", type: "uint256" },
+        { name: "tournamentData", type: "bytes" },
+        { name: "point", type: "uint256" },
+        { name: "nonce", type: "uint256" },
+        { name: "deadline", type: "uint256" },
+    ],
+};
 
 // ============================================================
 // internal utility functions
@@ -23,21 +50,14 @@ const PARTICIPANT_MAX_ID = 69;
 
 // convert a uint16 array to Big-endian bytes (hex string)
 function encodeUint16ArrayBE(values: number[]): string {
-    const byteLength = values.length * 2;
-
     let hex = "0x";
     for (const v of values) {
+        if (v < 0 || v > 0xffff) {
+            throw new Error("Value is out of uint16 range");
+        }
         hex += v.toString(16).padStart(4, "0");
     }
     return hex;
-}
-
-// briefly check that the participant array is unique (Solidity also checks again)
-function ensureUnique(values: number[]) {
-    const set = new Set(values);
-    if (set.size !== values.length) {
-        throw new Error("The PARTICIPANTS array contains duplicate values. finalizeTournament may revert with InvalidItem.");
-    }
 }
 
 // read the TournamentFinalizer address from deployment-info.json
@@ -76,8 +96,7 @@ function loadTournamentFinalizerAddressFromDeploymentInfo(): string {
     return address;
 }
 
-// pick unique numbers at random from the 0~65535 range, order-independent
-// (internal util: always returns a unique array)
+// pick unique numbers at random from the [minId, maxId] range
 function generateRandomParticipantsUnique(
     count: number,
     minId: number,
@@ -97,43 +116,12 @@ function generateRandomParticipantsUnique(
 }
 
 // pick participants without duplicates
-// - PARTICIPANT_COUNT of them
-// - from the PARTICIPANT_MIN_ID ~ PARTICIPANT_MAX_ID range
-// - randomly and uniquely
 export function pickParticipantsUnique(): number[] {
-    const participants = generateRandomParticipantsUnique(
+    return generateRandomParticipantsUnique(
         PARTICIPANT_COUNT,
         PARTICIPANT_MIN_ID,
         PARTICIPANT_MAX_ID
     );
-    // defensive check (always true in theory)
-    ensureUnique(participants);
-    return participants;
-}
-
-// pick participants with duplicates
-// - picks uniquely by default,
-// - then overwrites one of two randomly chosen indexes with the other's value
-//   so there is at least one duplicate
-// - use when you want to trigger the InvalidItem error on finalizeTournament
-export function pickParticipantsWithDuplicate(): number[] {
-    const participants = generateRandomParticipantsUnique(
-        PARTICIPANT_COUNT,
-        PARTICIPANT_MIN_ID,
-        PARTICIPANT_MAX_ID
-    );
-
-    const i = Math.floor(Math.random() * participants.length);
-    let j = Math.floor(Math.random() * participants.length);
-    if (i === j) {
-        j = (j + 1) % participants.length;
-    }
-
-    // overwrite value at j with value at i to create a duplicate
-    participants[j] = participants[i];
-
-    // this array intentionally contains a duplicate, so ensureUnique is not called.
-    return participants;
 }
 
 // ============================================================
@@ -143,54 +131,88 @@ export function pickParticipantsWithDuplicate(): number[] {
 async function main() {
     console.log("🚀 Starting the TournamentFinalizer.finalizeTournament execution script.");
 
-    const networkName = network.name;
-    console.log("🌐 Network:", networkName);
+    console.log("🌐 Network:", network.name);
 
     // read the address from scripts/output/deployment-info.json
     const contractAddress = loadTournamentFinalizerAddressFromDeploymentInfo();
-    if (!contractAddress) {
-        throw new Error("❌ Could not find the TournamentFinalizer address.");
-    }
 
-    // signer using the accounts setting in hardhat.config.ts (e.g. PRIVATE_KEY)
-    const [signer] = await ethers.getSigners();
-    console.log("👤 Sending transaction from:", signer.address);
+    // caller: uses the accounts setting in hardhat.config.ts (e.g. PRIVATE_KEY).
+    // This is the `user` the signature is bound to (msg.sender).
+    const [caller] = await ethers.getSigners();
+
+    // finalize signer: the authorized EIP-712 signer key. In production this signature
+    // comes from PNYX-BE; here we reproduce that flow locally to exercise the contract.
+    const finalizeSignerKey = process.env.FINALIZE_SIGNER_KEY;
+    if (!finalizeSignerKey) {
+        throw new Error(
+            "❌ You must set FINALIZE_SIGNER_KEY in the .env file.\n" +
+            "   It is the private key whose public address was passed as the contract's finalizeSigner."
+        );
+    }
+    const finalizeSignerWallet = new ethers.Wallet(finalizeSignerKey);
+
+    console.log("👤 Caller (signed user):", caller.address);
+    console.log("✍️  Finalize signer:", finalizeSignerWallet.address);
     console.log("🏛 TournamentFinalizer address:", contractAddress);
 
-    // generate participants (random, unique) and encode to bytes
-    // - use participants without duplicates: pickParticipantsUnique()
-    // - to see an InvalidItem revert with duplicate participants,
-    //   change the line below to pickParticipantsWithDuplicate().
+    // build tournament data
     const participants = pickParticipantsUnique();
-    // const participants = pickParticipantsWithDuplicate();
-
-    // console.log("participants:", ethers.dataLength(encodeUint16ArrayBE(participants)));
     const tournamentData = encodeUint16ArrayBE(participants);
-
-    // the contract computes the winner and runner-up as follows:
-    // - winner (first): uint16 value read at offset 0
-    // - runner-up (second): uint16 value read at offset len/2
-    const winner = participants[0]; // first item (offset 0)
-    const runnerUp = participants[participants.length / 2]; // middle item (offset len/2)
-
-    console.log("🎯 tournamentId:", TOURNAMENT_ID);
-    console.log("👥 Participant count:", participants.length, `(${ethers.dataLength(tournamentData)} bytes)`);
-    console.log("👑 Participants:", participants);
-    console.log("👑 Winner (first) candidate ID:", winner, `(index ${0})`);
-    console.log("🥈 Runner-up (second) candidate ID:", runnerUp, `(index ${participants.length / 2})`);
 
     // create the contract instance
     const contract = await ethers.getContractAt(
         "TournamentFinalizer",
         contractAddress,
-        signer
+        caller
     );
 
+    // fetch the caller's current on-chain nonce (replay protection)
+    const nonce: bigint = await contract.nonces(caller.address);
+
+    // deadline = now + DEADLINE_SECONDS
+    const deadline = BigInt(Math.floor(Date.now() / 1000) + DEADLINE_SECONDS);
+
+    const { chainId } = await ethers.provider.getNetwork();
+
+    console.log("🎯 tournamentId:", TOURNAMENT_ID);
+    console.log("👥 Participant count:", participants.length, `(${ethers.dataLength(tournamentData)} bytes)`);
+    console.log("🏅 point:", POINT);
+    console.log("🔢 nonce:", nonce.toString());
+    console.log("⏰ deadline:", deadline.toString());
+    console.log("⛓  chainId:", chainId.toString());
+
+    // build and sign the EIP-712 payload
+    const domain = {
+        name: EIP712_NAME,
+        version: EIP712_VERSION,
+        chainId,
+        verifyingContract: contractAddress,
+    };
+    const value = {
+        user: caller.address,
+        tournamentId: BigInt(TOURNAMENT_ID),
+        tournamentData,
+        point: BigInt(POINT),
+        nonce,
+        deadline,
+    };
+
+    const signature = await finalizeSignerWallet.signTypedData(
+        domain,
+        FINALIZE_TOURNAMENT_TYPES,
+        value
+    );
+    console.log("🖊  signature:", signature);
+
     console.log("📝 Sending the finalizeTournament transaction...");
-    // contract function signature: finalizeTournament(uint16 _tournamentId, bytes calldata _tournamentData)
-    // - _tournamentId: theme ID (TOURNAMENT_ID)
-    // - _tournamentData: a Big-endian encoded uint16 array (4 ~ 2048 bytes, a power of two)
-    const tx = await contract.finalizeTournament(TOURNAMENT_ID, tournamentData);
+    // finalizeTournament(uint16 _tournamentId, bytes _tournamentData, uint256 _point, uint256 _deadline, bytes _signature)
+    const tx = await contract.finalizeTournament(
+        TOURNAMENT_ID,
+        tournamentData,
+        POINT,
+        deadline,
+        signature
+    );
     console.log("⏳ Transaction sent. hash:", tx.hash);
 
     const receipt = await tx.wait();
@@ -202,7 +224,6 @@ async function main() {
     if (receipt && receipt.logs && receipt.logs.length > 0) {
         console.log("\n📢 Events emitted by the transaction:");
         for (const log of receipt.logs) {
-            // only try to parse logs emitted by this contract
             if (log.address.toLowerCase() !== contractAddress.toLowerCase()) {
                 continue;
             }
@@ -212,18 +233,13 @@ async function main() {
                 console.log("    - args:", parsed?.args);
 
                 if (parsed?.name === "TournamentFinalized") {
-                    // event param order: (address indexed user, bytes32 indexed tournamentDataHash, uint16 tournamentId, bytes tournamentData)
-                    // user and tournamentDataHash are indexed, so they can also be read from the log topics array
-                    const user = parsed?.args[0];
-                    const tournamentDataHash = parsed?.args[1];
-                    const tournamentId = parsed?.args[2];
-                    const tournamentDataBytes = parsed?.args[3];
-                    console.log("    - user:", user);
-                    console.log("    - tournamentDataHash (indexed):", tournamentDataHash);
-                    console.log("    - tournamentId:", tournamentId.toString());
+                    // (address indexed user, bytes32 indexed tournamentDataHash, uint16 tournamentId, bytes tournamentData)
+                    console.log("    - user:", parsed?.args[0]);
+                    console.log("    - tournamentDataHash (indexed):", parsed?.args[1]);
+                    console.log("    - tournamentId:", parsed?.args[2].toString());
                     console.log(
                         "    - tournamentData (bytes length):",
-                        ethers.dataLength(tournamentDataBytes)
+                        ethers.dataLength(parsed?.args[3])
                     );
                 }
             } catch {
@@ -233,6 +249,10 @@ async function main() {
     } else {
         console.log("\nℹ️ This transaction has no decodable event logs.");
     }
+
+    // post-call sanity: nonce should have incremented by 1
+    const nonceAfter: bigint = await contract.nonces(caller.address);
+    console.log("\n🔢 nonce after:", nonceAfter.toString(), `(was ${nonce.toString()})`);
 }
 
 main()

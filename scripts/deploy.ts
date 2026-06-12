@@ -5,6 +5,15 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+// read a required env var (throws if missing/blank) — pikit-contract pattern
+function requireEnv(key: string): string {
+    const v = process.env[key];
+    if (!v || !v.trim()) {
+        throw new Error(`❌ You must set ${key} in the .env file.`);
+    }
+    return v.trim();
+}
+
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 // wait helper
@@ -17,10 +26,21 @@ async function main() {
     console.log("🚀 Starting TournamentFinalizer contract deployment... (using OWNER_KEY)");
 
     // check the OWNER_KEY environment variable
-    const ownerKey = process.env.OWNER_KEY;
-    if (!ownerKey) {
-        throw new Error("❌ You must set OWNER_KEY in the .env file.");
+    const ownerKey = requireEnv("OWNER_KEY");
+
+    // authorized EIP-712 signer address (the PUBLIC address of PNYX-BE's
+    // SONEIUM_*_TOURNAMENT_FINALIZER_PRIVATE_KEY). Baked into the contract.
+    const finalizeSigner = requireEnv("FINALIZE_SIGNER");
+    if (!ethers.isAddress(finalizeSigner)) {
+        throw new Error(`❌ FINALIZE_SIGNER is not a valid address: ${finalizeSigner}`);
     }
+    if (finalizeSigner === ethers.ZeroAddress) {
+        throw new Error("❌ FINALIZE_SIGNER cannot be the zero address.");
+    }
+
+    // EIP-712 type string for the FinalizeTournament struct (keccak256'd in the constructor).
+    // MUST match PNYX-BE's EIP712_FINALIZE_TOURNAMENT_TYPES exactly (field order + types).
+    const finalizeTypeString = requireEnv("FINALIZE_TYPEHASH");
 
     const rpcUrl = (network.config as any).url;
 
@@ -37,6 +57,8 @@ async function main() {
     console.log("🔗 RPC URL:", rpcUrl);
     console.log("📋 Deployment settings:");
     console.log("  - Owner Address:", ownerWallet.address);
+    console.log("  - Finalize Signer:", finalizeSigner);
+    console.log("  - EIP-712 Type String:", finalizeTypeString);
 
     // track deployment cost
     let totalGasCost = 0n;
@@ -47,7 +69,10 @@ async function main() {
         let tournamentFinalizerAddr;
         console.log("\n2️⃣ Deploying the TournamentFinalizer contract...");
         const TournamentFinalizer = await ethers.getContractFactory("TournamentFinalizer");
-        const tournamentFinalizer = await TournamentFinalizer.connect(ownerWallet).deploy();
+        const tournamentFinalizer = await TournamentFinalizer.connect(ownerWallet).deploy(
+            finalizeSigner,
+            finalizeTypeString
+        );
         const tournamentFinalizerDeployTx = tournamentFinalizer.deploymentTransaction();
         await tournamentFinalizer.waitForDeployment();
         tournamentFinalizerAddr = await tournamentFinalizer.getAddress();
@@ -97,6 +122,7 @@ async function main() {
         const deploymentInfo = {
             network: await provider.getNetwork(),
             deployer: ownerWallet.address, // address that deployed with OWNER_KEY
+            finalizeSigner: finalizeSigner, // authorized EIP-712 signer baked into the contract
             contracts: {
                 tournamentFinalizer: tournamentFinalizerAddr,
             },

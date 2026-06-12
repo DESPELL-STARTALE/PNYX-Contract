@@ -21,10 +21,6 @@ const config: HardhatUserConfig = {
         hardhat: {
             loggingEnabled: false,
         },
-        localhost: {
-            url: process.env.LK_TESTNET_PROVIDER_URL,
-            accounts: [process.env.PRIVATE_KEY || '']
-        },
         SoneiumTestnet: {
             url: process.env.SONEIUM_TESTNET_PROVIDER_URL,
             accounts: [process.env.PRIVATE_KEY || '']
@@ -33,21 +29,16 @@ const config: HardhatUserConfig = {
             url: process.env.SONEIUM_MAINNET_PROVIDER_URL,
             accounts: [process.env.PRIVATE_KEY || '']
         },
-        EthSepoliaTestnet: {
-            url: process.env.ETH_SEPOLIA_TESTNET_PROVIDER_URL,
-            accounts: [process.env.PRIVATE_KEY || '']
-        },
-        BaseSepoliaTestnet: {
-            url: process.env.BASE_SEPOLIA_TESTNET_PROVIDER_URL,
-            accounts: [process.env.PRIVATE_KEY || '']
-        }
     },
+    // Blockscout verification (native support in @nomicfoundation/hardhat-verify v2.1+).
+    // No apiKey needed. Etherscan is disabled because Soneium uses Blockscout-based
+    // explorers; leaving it enabled (the default) would make `verify` exit with an
+    // error for these networks even when Blockscout verification succeeds.
     etherscan: {
-        apiKey: {
-            // Blockscout does not actually require an apiKey,
-            // so any non-empty string works
-            SoneiumMainnet: "empty",
-        },
+        enabled: false,
+    },
+    blockscout: {
+        enabled: true,
         customChains: [
             {
                 network: "SoneiumMainnet",
@@ -57,10 +48,18 @@ const config: HardhatUserConfig = {
                     browserURL: "https://soneium.blockscout.com",
                 },
             },
+            {
+                network: "SoneiumTestnet",
+                chainId: 1946,
+                urls: {
+                    apiURL: "https://soneium-minato.blockscout.com/api",
+                    browserURL: "https://soneium-minato.blockscout.com",
+                },
+            },
         ],
     },
     sourcify: {
-        enabled: true
+        enabled: true,
     },
 };
 

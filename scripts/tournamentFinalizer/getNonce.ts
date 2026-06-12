@@ -3,10 +3,11 @@ import fs from "fs";
 import path from "path";
 
 // ============================================================
-// ✏️ themeId, itemId to query (edit here or replace with CLI args)
+// ✏️ address to query (edit here or replace with CLI args)
 // ============================================================
-const THEME_ID: number = 1;
-const ITEM_ID: number = 26605;
+// the contract's nonces mapping uses an address as the key.
+// leave empty to query the first hardhat signer's address.
+const TARGET_ADDRESS: string = "";
 
 // read the TournamentFinalizer address from deployment-info.json
 function loadTournamentFinalizerAddressFromDeploymentInfo(): string {
@@ -49,19 +50,16 @@ function loadTournamentFinalizerAddressFromDeploymentInfo(): string {
 // ============================================================
 
 async function main() {
-    console.log("🚀 Starting the TournamentFinalizer.stats query script.");
+    console.log("🚀 Starting the TournamentFinalizer.nonces query script.");
 
-    const networkName = network.name;
-    console.log("🌐 Network:", networkName);
+    console.log("🌐 Network:", network.name);
 
     // read the address from scripts/output/deployment-info.json
     const contractAddress = loadTournamentFinalizerAddressFromDeploymentInfo();
-    if (!contractAddress) {
-        throw new Error("❌ Could not find the TournamentFinalizer address.");
-    }
 
     // read-only, but grab a signer to connect (a provider alone would also work)
     const [signer] = await ethers.getSigners();
+    const targetAddress = TARGET_ADDRESS || signer.address;
     console.log("👤 Querying with address:", signer.address);
     console.log("🏛 TournamentFinalizer address:", contractAddress);
 
@@ -71,24 +69,21 @@ async function main() {
         signer
     );
 
-    console.log("🔎 Querying stats... themeId =", THEME_ID, ", itemId =", ITEM_ID);
-    const stat = await contract.stats(THEME_ID, ITEM_ID);
+    // contract public mapping: mapping(address => uint256) public nonces;
+    console.log("🔎 Querying nonces... address =", targetAddress);
+    const nonce: bigint = await contract.nonces(targetAddress);
 
     console.log("✅ Query complete");
-    console.log("  - themeId:", THEME_ID);
-    console.log("  - itemId:", ITEM_ID);
-    console.log("  - firstCnt (raw BigNumber):", stat.firstCnt);
-    console.log("  - secondCnt (raw BigNumber):", stat.secondCnt);
-    console.log("  - firstCnt (string):", stat.firstCnt.toString());
-    console.log("  - secondCnt (string):", stat.secondCnt.toString());
+    console.log("  - address:", targetAddress);
+    console.log("  - nonce (string):", nonce.toString());
 }
 
 main()
     .then(() => {
-        console.log("\n🎯 getStats script finished");
+        console.log("\n🎯 getNonce script finished");
         process.exit(0);
     })
     .catch((error) => {
-        console.error("❌ getStats script failed:", error);
+        console.error("❌ getNonce script failed:", error);
         process.exit(1);
     });
