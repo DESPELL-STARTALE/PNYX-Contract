@@ -122,13 +122,14 @@ describe("TournamentFinalizer", function () {
 
             const dataHash = ethers.keccak256(data);
 
-            await expect(
-                tournamentFinalizer
-                    .connect(caller)
-                    .finalizeTournament(tournamentId, data, point, deadline, signature)
-            )
+            const tx = await tournamentFinalizer
+                .connect(caller)
+                .finalizeTournament(tournamentId, data, point, deadline, signature);
+            const blockTimestamp = await time.latest();
+
+            await expect(tx)
                 .to.emit(tournamentFinalizer, "TournamentFinalized")
-                .withArgs(caller.address, dataHash, tournamentId, data);
+                .withArgs(blockTimestamp, caller.address, dataHash, tournamentId, data);
 
             expect(await tournamentFinalizer.nonces(caller.address)).to.equal(1n);
         });
@@ -467,13 +468,14 @@ describe("TournamentFinalizer", function () {
                 deadline,
             });
 
-            await expect(
-                tournamentFinalizer
-                    .connect(caller)
-                    .finalizeTournament(0, data, 1, deadline, signature)
-            )
+            const tx = await tournamentFinalizer
+                .connect(caller)
+                .finalizeTournament(0, data, 1, deadline, signature);
+            const blockTimestamp = await time.latest();
+
+            await expect(tx)
                 .to.emit(tournamentFinalizer, "TournamentFinalized")
-                .withArgs(caller.address, ethers.keccak256(data), 0, data);
+                .withArgs(blockTimestamp, caller.address, ethers.keccak256(data), 0, data);
         });
     });
 

@@ -36,12 +36,14 @@ contract TournamentFinalizer is Ownable, EIP712 {
     /**
      * @notice Tournament finalized event
      * @dev Emitted after a finalizeTournament signature is verified
+     * @param timestamp Block timestamp when the tournament was finalized
      * @param user Caller address (the signed `user`)
      * @param tournamentDataHash Tournament data hash (keccak256)
      * @param tournamentId Tournament ID
      * @param tournamentData Tournament data
      */
     event TournamentFinalized(
+        uint256 timestamp,
         address indexed user,
         bytes32 indexed tournamentDataHash,
         uint16 tournamentId,
@@ -126,6 +128,7 @@ contract TournamentFinalizer is Ownable, EIP712 {
         }
 
         emit TournamentFinalized(
+            block.timestamp,
             msg.sender,
             tournamentDataHash,
             _tournamentId,
