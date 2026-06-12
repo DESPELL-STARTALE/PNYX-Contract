@@ -129,7 +129,7 @@ describe("TournamentFinalizer", function () {
 
             await expect(tx)
                 .to.emit(tournamentFinalizer, "TournamentFinalized")
-                .withArgs(blockTimestamp, caller.address, dataHash, tournamentId, data);
+                .withArgs(blockTimestamp, caller.address, dataHash, tournamentId, data, point);
 
             expect(await tournamentFinalizer.nonces(caller.address)).to.equal(1n);
         });
@@ -475,7 +475,7 @@ describe("TournamentFinalizer", function () {
 
             await expect(tx)
                 .to.emit(tournamentFinalizer, "TournamentFinalized")
-                .withArgs(blockTimestamp, caller.address, ethers.keccak256(data), 0, data);
+                .withArgs(blockTimestamp, caller.address, ethers.keccak256(data), 0, data, 1);
         });
     });
 

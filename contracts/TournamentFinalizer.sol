@@ -41,13 +41,15 @@ contract TournamentFinalizer is Ownable, EIP712 {
      * @param tournamentDataHash Tournament data hash (keccak256)
      * @param tournamentId Tournament ID
      * @param tournamentData Tournament data
+     * @param point Point bound to the signature by the backend
      */
     event TournamentFinalized(
-        uint256 timestamp,
+        uint256 indexed timestamp,
         address indexed user,
         bytes32 indexed tournamentDataHash,
         uint16 tournamentId,
-        bytes tournamentData
+        bytes tournamentData,
+        uint256 point
     );
     /**
      * @notice Emitted when the authorized signer is updated.
@@ -132,7 +134,8 @@ contract TournamentFinalizer is Ownable, EIP712 {
             msg.sender,
             tournamentDataHash,
             _tournamentId,
-            _tournamentData
+            _tournamentData,
+            _point
         );
     }
 
