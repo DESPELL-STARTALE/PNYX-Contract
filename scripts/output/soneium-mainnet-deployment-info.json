@@ -1,0 +1,13 @@
+{
+  "network": {
+    "name": "unknown",
+    "chainId": "1868"
+  },
+  "deployer": "0xf5F82F99515f068Cf101e247bc58ffD3d1dCc63F",
+  "finalizeSigner": "0xD95Aa04fa79a91e0926151c7E32bDf15577265bF",
+  "contracts": {
+    "tournamentFinalizer": "0x55247A3DD973c7c07D578326D4b4bB3F04BC730f"
+  },
+  "deploymentTime": "2026-06-14T11:29:10.539Z",
+  "deploymentBlock": 24150899
+}
